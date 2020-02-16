@@ -13,41 +13,78 @@ import java.util.regex.Pattern;
 
 public class Main {
 
-    public static void main(String[] args) throws IOException {
+    private static final String FILE_PATH = "src/main/data/mongo.csv";
+    private static final String DATABASE = "local";
+    private static final String KEY = "Students";
 
-        String filePath = "src/main/data/mongo.csv";
-        List<String> lines = Files.readAllLines(Paths.get(filePath));
+    public static void main(String[] args) {
 
-        MongoClient mongoClient = new MongoClient("127.0.0.1", 27017);
+        MongoCollection<Document> collection = createCollection(DATABASE, KEY);
 
-        MongoDatabase database = mongoClient.getDatabase("local");
-        MongoCollection<Document> collection = database.getCollection("Students");
-        collection.drop();
-
-        for (String line : lines) {
-            Pattern pattern = Pattern.compile("(?<name>.+),(?<age>[0-9]+),(?<courses>.+)");
-            Matcher matcher = pattern.matcher(line);
-             if (matcher.find()) {
-                 Document studentInfo = new Document()
-                         .append("name", matcher.group("name"))
-                         .append("age", Integer.parseInt(matcher.group("age")))
-                         .append("courses", matcher.group("courses"));
-                 collection.insertOne(studentInfo);
-             }
+        try {
+            fillDatabase(FILE_PATH, collection);
+        }
+        catch (Exception ex) {
+            System.out.println("Файл для создания базы не существует или не читается");
+            return;
         }
 
-        long studentsCount = collection.countDocuments();
-        System.out.println("Всего студентов в базе: " + studentsCount);
+            getStudentsCount(collection);
+            getStudentsAfterForty(collection);
+            getYangestStudentName(collection);
+            getOlderStudentCourses(collection);
+    }
 
+    public static MongoCollection<Document> createCollection(String databaseName, String collectionKey)
+    {
+        MongoClient mongoClient = new MongoClient("127.0.0.1", 27017);
+        MongoDatabase database = mongoClient.getDatabase(databaseName);
+        MongoCollection<Document> collection = database.getCollection(collectionKey);
+        collection.drop();
+
+        return collection;
+    }
+
+    public static void fillDatabase(String path, MongoCollection<Document> collection) throws IOException {
+
+            List<String> lines = Files.readAllLines(Paths.get(path));
+
+            for (int i = 0; i < lines.size(); i++)
+            {
+                Pattern pattern = Pattern.compile("(?<name>.+),(?<age>[0-9]+),(?<courses>.+)");
+                Matcher matcher = pattern.matcher(lines.get(i));
+                if (matcher.find()) {
+                    Document studentInfo = new Document()
+                            .append("name", matcher.group("name"))
+                            .append("age", Integer.parseInt(matcher.group("age")))
+                            .append("courses", matcher.group("courses"));
+                    collection.insertOne(studentInfo);
+                } else {
+                    System.out.println("Строка №" + i + " не соответствует необходимому формату и не может быть обработана");
+                }
+            }
+    }
+
+    public static void getStudentsCount(MongoCollection<Document> collection)
+    {
+        System.out.println("Всего студентов в базе: " + collection.countDocuments());
+    }
+
+    public static void getStudentsAfterForty(MongoCollection<Document> collection)
+    {
         BsonDocument queryAfterForty = BsonDocument.parse("{age: {$gt: 40}}");
-        long studentsAfterForty = collection.countDocuments(queryAfterForty);
-        System.out.println("Студентов старше 40 лет: " + studentsAfterForty);
+        System.out.println("Студентов старше 40 лет: " + collection.countDocuments(queryAfterForty));
+    }
 
+    public static void getYangestStudentName(MongoCollection<Document> collection)
+    {
         BsonDocument queryYangestStudent = BsonDocument.parse("{age : 1 }");
         MongoCursor<Document> cursor = collection.find().sort(queryYangestStudent).limit(1).cursor();
-        String yangestStudentName = cursor.next().getString("name");
-        System.out.println("Самый молодой студент: " + yangestStudentName);
+        System.out.println("Самый молодой студент: " + cursor.next().getString("name"));
+    }
 
+    public static void getOlderStudentCourses(MongoCollection<Document> collection)
+    {
         BsonDocument queryOlderStudent = BsonDocument.parse("{age : -1 }");
         Iterable<Document> olderStudentCourses = collection.find().sort(queryOlderStudent).limit(1);
         olderStudentCourses.forEach(student ->
